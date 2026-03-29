@@ -1,5 +1,6 @@
 package com.example.menciliegio
 
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -54,7 +55,8 @@ fun ProductManagerScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(SfondoNero).padding(16.dp)) {
+    // Nota: SfondoNero deve essere definito nei tuoi colori, se dà errore usa Color.Black
+    Column(modifier = Modifier.fillMaxSize().background(Color.Black).padding(16.dp)) {
         Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) {
             Text("← HOME")
         }
@@ -71,8 +73,12 @@ fun ProductManagerScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Button(onClick = { viewModel.aggiungiProdotto() }, colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio)) {
-                Text("ADD", color = Color.Black)
+
+            // CORRETTO: Usiamo 'viewModel' (non productViewModel) e passiamo 'context'
+            Button(onClick = {
+                viewModel.aggiungiProdotto(context)
+            }) {
+                Text("Aggiungi")
             }
         }
 
@@ -84,7 +90,7 @@ fun ProductManagerScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
             Text("Extra", color = Color.White)
         }
 
-        ScrollableTabRow(selectedTabIndex = tabSelezionata, containerColor = SfondoNero, contentColor = OroCiliegio, edgePadding = 0.dp) {
+        ScrollableTabRow(selectedTabIndex = tabSelezionata, containerColor = Color.Black, contentColor = OroCiliegio, edgePadding = 0.dp) {
             categorie.forEachIndexed { index, title ->
                 Tab(selected = tabSelezionata == index, onClick = {
                     tabSelezionata = index
@@ -95,11 +101,13 @@ fun ProductManagerScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
 
         Row(modifier = Modifier.weight(1f).padding(vertical = 8.dp)) {
             Box(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
-                IngredientList("BASE", prodotti.filter { it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Base" }, viewModel)
+                // Passiamo anche il context alla lista per l'eliminazione
+                IngredientList("BASE", prodotti.filter { it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Base" }, viewModel, context)
             }
             Spacer(modifier = Modifier.width(8.dp))
             Box(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
-                IngredientList("EXTRA", prodotti.filter { it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Extra" }, viewModel)
+                // Passiamo anche il context alla lista per l'eliminazione
+                IngredientList("EXTRA", prodotti.filter { it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Extra" }, viewModel, context)
             }
         }
 
@@ -115,13 +123,23 @@ fun ProductManagerScreen(viewModel: ProductViewModel, onBack: () -> Unit) {
 }
 
 @Composable
-fun IngredientList(title: String, list: List<Prodotto>, viewModel: ProductViewModel) {
+fun IngredientList(title: String, list: List<Prodotto>, viewModel: ProductViewModel, context: Context) {
     Column {
         Text(text = title, color = OroCiliegio, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.CenterHorizontally))
         HorizontalDivider(color = OroCiliegio, thickness = 1.dp)
         LazyColumn {
             items(list) { prodotto ->
-                Text(text = prodotto.nome, color = Color.White, modifier = Modifier.fillMaxWidth().padding(8.dp).clickable { viewModel.eliminaProdotto(prodotto) })
+                Text(
+                    text = prodotto.nome,
+                    color = Color.White,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .clickable {
+                            // CORRETTO: Passiamo sia il prodotto che il context
+                            viewModel.eliminaProdotto(prodotto, context)
+                        }
+                )
             }
         }
     }

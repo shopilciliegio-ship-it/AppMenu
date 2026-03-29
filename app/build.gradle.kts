@@ -56,6 +56,8 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.3")
     implementation("com.google.mlkit:translate:17.0.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
+    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation("com.google.code.gson:gson:2.10.1")
 
     // DATABASE ROOM
     val room_version = "2.6.1"

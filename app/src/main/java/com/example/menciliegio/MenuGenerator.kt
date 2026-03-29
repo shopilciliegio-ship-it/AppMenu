@@ -25,6 +25,7 @@ object MenuGenerator {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
+        // 1. SFONDO E LOGO (Invariati)
         val sfondoRaw = BitmapFactory.decodeResource(context.resources, R.drawable.prova5)
         canvas.drawBitmap(Bitmap.createScaledBitmap(sfondoRaw, width, height, true), 0f, 0f, null)
 
@@ -35,7 +36,14 @@ object MenuGenerator {
             canvas.drawBitmap(Bitmap.createScaledBitmap(logoRaw, logoW, logoH, true), (width - logoW) / 2f, 25f, null)
         }
 
-        val paintTitolo = TextPaint().apply {
+        // 2. DEFINIZIONE LIMITI AREA DI SCRITTURA
+        val startY = 220f   // Subito dopo l'header
+        val endY = 810f     // Prima del prezzo finale
+        val availableHeight = endY - startY
+        val maxContentWidth = width - 100
+
+        // 3. PREPARAZIONE PAINT
+        val paintTitoloHeader = TextPaint().apply {
             color = Color.BLACK
             isAntiAlias = true
             textAlign = Paint.Align.CENTER
@@ -43,52 +51,96 @@ object MenuGenerator {
             textSize = 26f
         }
 
-        canvas.drawText(testoHeader, width / 2f, 190f, paintTitolo)
+        val paintCategoria = TextPaint().apply {
+            color = Color.BLACK
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 22f // Dimensione base, calerà se necessario
+        }
 
         val paintPiatti = TextPaint().apply {
             color = Color.BLACK
             isAntiAlias = true
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-            textSize = 22f
+            textSize = 20f // Dimensione base
         }
 
-        var yPos = 230f
-        val maxContentWidth = width - 80
+        // DISEGNA HEADER
+        canvas.drawText(testoHeader, width / 2f, 185f, paintTitoloHeader)
 
-        val categorie = listOf("Antipasti", "Primi", "Secondi", "Contorni", "Dolci")
+        // 4. CALCOLO DINAMICO DELLO SPAZIO
+        val categorieOrdinate = listOf("Antipasti", "Primi", "Secondi", "Contorni", "Dolci")
         val traduzioniCat = mapOf("Antipasti" to "APPETIZERS", "Primi" to "FIRST COURSES", "Secondi" to "MAIN COURSES", "Contorni" to "SIDE DISHES", "Dolci" to "DESSERTS")
 
-        categorie.forEach { cat ->
+        // Creiamo una lista di "blocchi" (StaticLayout) per misurare l'altezza totale
+        val layouts = mutableListOf<Pair<StaticLayout, Boolean>>() // Layout e flag "è categoria"
+        var altezzaTestoPura = 0f
+
+        categorieOrdinate.forEach { cat ->
             val lista = piatti[cat]
             if (!lista.isNullOrEmpty()) {
-                paintTitolo.textSize = 24f
-                val titolo = if (isEnglish) traduzioniCat[cat] ?: cat.uppercase() else cat.uppercase()
-                canvas.drawText(titolo, width / 2f, yPos, paintTitolo)
-                yPos += 40f
+                // Layout Categoria
+                val tit = if (isEnglish) traduzioniCat[cat] ?: cat.uppercase() else cat.uppercase()
+                val layoutCat = StaticLayout.Builder.obtain(tit, 0, tit.length, paintCategoria, maxContentWidth)
+                    .setAlignment(Layout.Alignment.ALIGN_CENTER).build()
+                layouts.add(layoutCat to true)
+                altezzaTestoPura += layoutCat.height
 
+                // Layout Piatti
                 lista.forEach { piatto ->
-                    val staticLayout = StaticLayout.Builder.obtain(piatto, 0, piatto.length, paintPiatti, maxContentWidth)
-                        .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                        .build()
-                    canvas.save()
-                    canvas.translate(40f, yPos)
-                    staticLayout.draw(canvas)
-                    canvas.restore()
-                    yPos += staticLayout.height + 10f
+                    val layoutPiatto = StaticLayout.Builder.obtain(piatto, 0, piatto.length, paintPiatti, maxContentWidth)
+                        .setAlignment(Layout.Alignment.ALIGN_CENTER).build()
+                    layouts.add(layoutPiatto to false)
+                    altezzaTestoPura += layoutPiatto.height
                 }
-                yPos += 20f
             }
         }
 
-        val prezzoFormattato = try { String.format("%.2f", prezzo.replace(",",".").toDouble()).replace(".",",") } catch(e:Exception) { prezzo }
-        paintTitolo.textSize = 24f
-        val rigaPrezzo = if (isEnglish) "FULL MENU PER PERSON € $prezzoFormattato" else "MENU' COMPLETO A PERSONA € $prezzoFormattato"
-        canvas.drawText(rigaPrezzo, width / 2f, height - 80f, paintTitolo)
+        // Calcoliamo lo spazio extra (gap) da mettere tra un elemento e l'altro
+        // Se altezzaTestoPura è quasi quanto availableHeight, il gap sarà piccolo o nullo
+        var gap = (availableHeight - altezzaTestoPura) / (layouts.size + 1)
 
-        paintTitolo.textSize = 18f
-        paintTitolo.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        // Protezione: se il menu è troppo lungo, riduciamo il font e ricalcoliamo il gap
+        if (gap < 5f) {
+            paintCategoria.textSize = 19f
+            paintPiatti.textSize = 17f
+            // (In un caso ideale ricalcoleremmo i layout qui, ma per brevità riduciamo il gap minimo)
+            gap = 5f
+        }
+        if (gap > 35f) gap = 35f // Evitiamo che i piatti siano troppo dispersi se sono pochi
+
+        // 5. DISEGNO EFFETTIVO
+        var currentY = startY + (availableHeight - (altezzaTestoPura + (gap * (layouts.size - 1)))) / 2f
+
+        layouts.forEach { (layout, isCategoria) ->
+            canvas.save()
+            canvas.translate((width - maxContentWidth) / 2f, currentY)
+            layout.draw(canvas)
+            canvas.restore()
+
+            // Se l'elemento successivo è una categoria, aggiungi un po' di spazio extra
+            val extraSpacing = if (isCategoria) gap * 0.5f else gap
+            currentY += layout.height + extraSpacing
+        }
+
+        // 6. DISEGNA FOOTER (Prezzo e Bimbi) - Posizione fissa in basso
+        val prezzoFormattato = try { String.format("%.2f", prezzo.replace(",",".").toDouble()).replace(".",",") } catch(e:Exception) { prezzo }
+
+        val paintFooter = TextPaint().apply {
+            color = Color.BLACK
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textSize = 24f
+        }
+
+        val rigaPrezzo = if (isEnglish) "FULL MENU PER PERSON € $prezzoFormattato" else "MENU' COMPLETO A PERSONA € $prezzoFormattato"
+        canvas.drawText(rigaPrezzo, width / 2f, height - 90f, paintFooter)
+
+        paintFooter.textSize = 18f
+        paintFooter.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         val rigaBimbi = if (isEnglish) "KIDS MENU AVAILABLE ON REQUEST € 13,00" else "DISPONIBILI SU RICHIESTA MENU' BIMBI AD € 13,00"
-        canvas.drawText(rigaBimbi, width / 2f, height - 45f, paintTitolo)
+        canvas.drawText(rigaBimbi, width / 2f, height - 55f, paintFooter)
 
         return bitmap
     }
