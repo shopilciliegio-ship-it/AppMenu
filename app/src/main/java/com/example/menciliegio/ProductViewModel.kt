@@ -1,6 +1,7 @@
 package com.example.menciliegio
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +106,27 @@ class ProductViewModel(val dao: MenuDao) : ViewModel() {
                     dao.insertCorrezioni(listaC)
                 }
             } catch (e: Exception) { e.printStackTrace() }
+        }
+    }
+    // Dentro ProductViewModel.kt
+    fun salvaSuSharePoint(service: SharePointService, jsonDati: String, immagineDati: ByteArray?) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Salva il JSON del menù
+                val nomeFileJson = "menu_${System.currentTimeMillis()}.json"
+                service.uploadJsonToSharePoint(jsonDati, nomeFileJson)
+
+                // 2. Salva l'immagine se presente
+                immagineDati?.let {
+                    val nomeFileJpg = "foto_${System.currentTimeMillis()}.jpg"
+                    service.uploadImageToSharePoint(it, nomeFileJpg)
+                }
+
+                // Qui potresti aggiungere un messaggio di "Successo" per l'utente
+            } catch (e: Exception) {
+                // Gestisci l'errore (es. mancanza di connessione)
+                Log.e("SharePoint", "Errore durante l'upload", e)
+            }
         }
     }
 }

@@ -11,12 +11,22 @@ android {
 
     defaultConfig {
         applicationId = "com.example.menuciliegio"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    packaging {
+        resources {
+            // Esclude i file che creano conflitti
+            excludes += "/META-INF/NOTICE.md"
+            excludes += "/META-INF/LICENSE.md"
+            excludes += "/META-INF/DEPENDENCIES"
+            excludes += "/META-INF/LICENSE"
+            excludes += "/META-INF/NOTICE"
+        }
     }
 
     buildTypes {
@@ -30,8 +40,11 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = "1.8"
     }
 
     // Sintassi pulita per Kotlin 2.0
@@ -70,4 +83,16 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    // Modifica le righe Microsoft aggiungendo l'esclusione così:
+    implementation("com.microsoft.identity.client:msal:4.0.0") {
+        exclude(group = "com.microsoft.device.display", module = "display-mask")
+    }
+
+    implementation("com.microsoft.graph:microsoft-graph:5.0.0") {
+        exclude(group = "com.microsoft.device.display", module = "display-mask")
+    }
+
+    // Le altre dipendenze rimangono uguali...
+    implementation("com.azure:azure-core-http-okhttp:1.7.0")
+    implementation("com.squareup.okhttp3:okhttp:4.10.0")
 }

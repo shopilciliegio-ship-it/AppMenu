@@ -1,12 +1,21 @@
 package com.example.menciliegio
 
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Surface
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
@@ -14,29 +23,24 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.layout.Box // Aggiunto per sicurezza
+import com.microsoft.graph.requests.GraphServiceClient
+import com.microsoft.identity.client.*
+import com.microsoft.identity.client.exception.MsalException
 import org.json.JSONObject
+import java.util.concurrent.CompletableFuture
 
 class MainActivity : ComponentActivity() {
+
+    // Cambiato a SingleAccount per semplicità e coerenza con il file JSON
+    private var mSingleAccountApp: ISingleAccountPublicClientApplication? = null
+    private var graphClient: GraphServiceClient<okhttp3.Request>? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // --- 1. INIZIALIZZAZIONE DATABASE E VIEWMODEL ---
         val db = AppDatabase.getDatabase(applicationContext)
         val dao = db.menuDao()
-
 
         val productViewModel = ViewModelProvider(this, object : ViewModelProvider.Factory {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -52,21 +56,34 @@ class MainActivity : ComponentActivity() {
             }
         })[MenuBuilderViewModel::class.java]
 
+        // --- 2. INIZIALIZZAZIONE MICROSOFT AUTH (MSAL) ---
+        // Nota: ho corretto R.raw.auth_config_single_account (senza .json)
+        PublicClientApplication.createSingleAccountPublicClientApplication(
+            this,
+            R.raw.`auth_config_single_account`,
+            object : IPublicClientApplication.ISingleAccountApplicationCreatedListener {
+                override fun onCreated(application: ISingleAccountPublicClientApplication) {
+                    mSingleAccountApp = application
+                    Log.d("MSAL", "App Microsoft inizializzata correttamente!")
+                }
+
+                override fun onError(exception: MsalException) {
+                    Log.e("MSAL", "Errore configurazione: ${exception.message}")
+                }
+            })
+
+        // --- 3. INTERFACCIA UTENTE ---
         setContent {
             val navController = rememberNavController()
             val context = LocalContext.current
 
-            // Launcher per selezionare la cartella cloud (OneDrive)
             val folderLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.OpenDocumentTree()
             ) { uri ->
                 uri?.let {
-                    // Chiediamo il permesso permanente ad Android
                     val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                     contentResolver.takePersistableUriPermission(it, takeFlags)
-
-                    // Salviamo l'URI nelle preferenze
                     CloudStorageHelper.saveFolderUri(context, it)
                 }
             }
@@ -74,29 +91,31 @@ class MainActivity : ComponentActivity() {
             Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
-                        // Usiamo un Box per mettere il tastino piccolo sopra la HomeScreen senza rompere il layout
                         Box(modifier = Modifier.fillMaxSize()) {
-                            // La tua schermata principale
                             HomeScreen(
                                 onNavigate = { navController.navigate(it) },
-                                productViewModel = productViewModel // <--- AGGIUNGI QUESTA RIGA
+                                productViewModel = productViewModel
                             )
 
-                            // Il tastino per il Cloud posizionato in basso al centro
                             TextButton(
                                 onClick = { folderLauncher.launch(null) },
                                 modifier = Modifier
-                                    .align(Alignment.BottomCenter) // Ora Alignment verrà riconosciuto
+                                    .align(Alignment.BottomCenter)
                                     .padding(bottom = 16.dp)
                             ) {
-                                Text(
-                                    text = "Imposta Cartella Condivisa",
-                                    color = Color.Gray,
-                                    fontSize = 12.sp // Ora sp verrà riconosciuto
-                                )
+                                Text("Imposta Cartella Condivisa", color = Color.Gray, fontSize = 12.sp)
+                            }
+
+                            Button(
+                                onClick = { signInToSharePoint() },
+                                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                            ) {
+                                Text("Login SharePoint", fontSize = 10.sp)
                             }
                         }
                     }
+                    // ... (restanti composable rimangono uguali)
                     composable("archivio") {
                         ArchiveScreen(
                             onBack = { navController.popBackStack() },
@@ -105,17 +124,16 @@ class MainActivity : ComponentActivity() {
                                 val data = root.getString("date")
                                 val servizio = root.getString("service")
                                 val nome = root.optString("extra_name", "Standard")
-
-                                // 1. Carichiamo i dati nel ViewModel
                                 builderViewModel.caricaDaJson(jsonContent, lingua)
-
-                                // 2. Navighiamo al builder (che troverà i dati già pronti)
                                 navController.navigate("builder/$data/$servizio/$nome")
                             }
                         )
                     }
-                    // ... (altre rotte invariate)
-                    composable("prodotti") { ProductManagerScreen(productViewModel, onBack = { navController.popBackStack() }) }
+
+                    composable("prodotti") {
+                        ProductManagerScreen(productViewModel, onBack = { navController.popBackStack() })
+                    }
+
                     composable("compila_header") {
                         MenuHeaderScreen(
                             onConfirm = { d, s, n ->
@@ -125,6 +143,7 @@ class MainActivity : ComponentActivity() {
                             onBack = { navController.popBackStack() }
                         )
                     }
+
                     composable(
                         route = "builder/{data}/{servizio}/{nome}",
                         arguments = listOf(
@@ -145,5 +164,41 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    fun signInToSharePoint() {
+        val app = mSingleAccountApp
+        if (app == null) {
+            Toast.makeText(this, "Attendi: inizializzazione in corso...", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Scope semplificati per SharePoint/OneDrive
+        val scopes = arrayOf("Files.ReadWrite.All")
+
+        app.signIn(this, "", scopes, object : AuthenticationCallback {
+            override fun onSuccess(authenticationResult: IAuthenticationResult) {
+                val accessToken = authenticationResult.accessToken
+
+                // Inizializzazione client Graph
+                graphClient = GraphServiceClient.builder()
+                    .authenticationProvider { CompletableFuture.completedFuture(accessToken) }
+                    .buildClient()
+
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Login SharePoint Riuscito!", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            override fun onError(exception: MsalException) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Errore: ${exception.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+
+            override fun onCancel() {
+                Log.d("SharePoint", "Login annullato")
+            }
+        })
     }
 }
