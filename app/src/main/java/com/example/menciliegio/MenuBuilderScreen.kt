@@ -104,8 +104,10 @@ fun MenuBuilderScreen(
             // (Nota: se hai caricato un EN, i piattiIT nel JSON saranno sovrascritti con quelli EN
             // a meno di non avere una logica di traduzione inversa, ma seguiamo la tua richiesta)
 
-            val piattiIT = if (builderViewModel.linguaCorrente.value == "IT") piattiAttuali else piattiAttuali // qui potresti integrare la traduzione se serve
-            val piattiEN = if (builderViewModel.linguaCorrente.value == "EN") piattiAttuali else MenuGenerator.translateMenuWithRules(piattiIT, productViewModel.dao)
+            // Il menù viene sempre compilato in IT. La traduzione avviene solo al salvataggio:
+            val piattiIT = builderViewModel.menuFinale.mapValues { it.value.map { p -> p.nomeVisualizzato } }
+            val piattiEN = MenuGenerator.translateMenuWithRules(piattiIT, productViewModel.dao)
+            // Poi salva entrambi nel JSON
 
             // 3. Generazione JPG (nella lingua corretta)
             val bitmapDaSalvare = MenuGenerator.generateMenuJpg(
@@ -346,18 +348,16 @@ fun MenuBuilderScreen(
             },
             confirmButton = {
                 Button(onClick = {
-                    // MODIFICA QUI SOTTO: aggiungi ", context" alla fine
                     productViewModel.aggiungiIngredienteVeloce(
-                        nuovoIngredienteNome,
-                        catCorrente,
-                        sottoCategoriaTarget,
-                        context // <--- Assicurati che questo context ci sia!
+                        nuovoIngredienteNome, catCorrente, sottoCategoriaTarget, context
                     )
                     nuovoIngredienteNome = ""
                     mostraDialogoAggiunta = false
-                }) { Text("Salva") }
+                }) { Text("Aggiungi") }
             },
-            dismissButton = { TextButton(onClick = { mostraDialogoAggiunta = false }) { Text("Annulla") } }
+            dismissButton = {
+                TextButton(onClick = { mostraDialogoAggiunta = false }) { Text("Annulla") }
+            }
         )
     }
 
