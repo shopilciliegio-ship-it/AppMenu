@@ -27,6 +27,9 @@ android {
             excludes += "/META-INF/LICENSE"
             excludes += "/META-INF/NOTICE"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     buildTypes {

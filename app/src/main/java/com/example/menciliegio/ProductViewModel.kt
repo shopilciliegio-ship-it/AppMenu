@@ -112,19 +112,14 @@ class ProductViewModel(val dao: MenuDao) : ViewModel() {
     fun salvaSuSharePoint(service: SharePointService, jsonDati: String, immagineDati: ByteArray?) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                // 1. Salva il JSON del menù
                 val nomeFileJson = "menu_${System.currentTimeMillis()}.json"
-                service.uploadJsonToSharePoint(jsonDati, nomeFileJson)
+                service.uploadJsonToOneDrive(jsonDati, nomeFileJson)
 
-                // 2. Salva l'immagine se presente
                 immagineDati?.let {
                     val nomeFileJpg = "foto_${System.currentTimeMillis()}.jpg"
-                    service.uploadImageToSharePoint(it, nomeFileJpg)
+                    service.uploadImageToOneDrive(it, nomeFileJpg)
                 }
-
-                // Qui potresti aggiungere un messaggio di "Successo" per l'utente
             } catch (e: Exception) {
-                // Gestisci l'errore (es. mancanza di connessione)
                 Log.e("SharePoint", "Errore durante l'upload", e)
             }
         }

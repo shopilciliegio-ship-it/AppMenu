@@ -1,13 +1,10 @@
 package com.example.menciliegio
 
-import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.ui.Alignment
@@ -16,7 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModel                          // ← QUESTO MANCAVA
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -31,7 +28,6 @@ import java.util.concurrent.CompletableFuture
 
 class MainActivity : ComponentActivity() {
 
-    // Cambiato a SingleAccount per semplicità e coerenza con il file JSON
     private var mSingleAccountApp: ISingleAccountPublicClientApplication? = null
     private var graphClient: GraphServiceClient<okhttp3.Request>? = null
 
@@ -57,7 +53,6 @@ class MainActivity : ComponentActivity() {
         })[MenuBuilderViewModel::class.java]
 
         // --- 2. INIZIALIZZAZIONE MICROSOFT AUTH (MSAL) ---
-        // Nota: ho corretto R.raw.auth_config_single_account (senza .json)
         PublicClientApplication.createSingleAccountPublicClientApplication(
             this,
             R.raw.`auth_config_single_account`,
@@ -75,18 +70,6 @@ class MainActivity : ComponentActivity() {
         // --- 3. INTERFACCIA UTENTE ---
         setContent {
             val navController = rememberNavController()
-            val context = LocalContext.current
-
-            val folderLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.OpenDocumentTree()
-            ) { uri ->
-                uri?.let {
-                    val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    contentResolver.takePersistableUriPermission(it, takeFlags)
-                    CloudStorageHelper.saveFolderUri(context, it)
-                }
-            }
 
             Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
                 NavHost(navController = navController, startDestination = "home") {
@@ -96,26 +79,19 @@ class MainActivity : ComponentActivity() {
                                 onNavigate = { navController.navigate(it) },
                                 productViewModel = productViewModel
                             )
-
-                            TextButton(
-                                onClick = { folderLauncher.launch(null) },
+                            // ✅ Login SharePoint spostato in BottomCenter
+                            Button(
+                                onClick = { signInToSharePoint(productViewModel) },
                                 modifier = Modifier
                                     .align(Alignment.BottomCenter)
                                     .padding(bottom = 16.dp)
-                            ) {
-                                Text("Imposta Cartella Condivisa", color = Color.Gray, fontSize = 12.sp)
-                            }
-
-                            Button(
-                                onClick = { signInToSharePoint() },
-                                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                                    .fillMaxWidth(0.8f),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
                             ) {
-                                Text("Login SharePoint", fontSize = 10.sp)
+                                Text("Login SharePoint", fontSize = 14.sp)
                             }
                         }
                     }
-                    // ... (restanti composable rimangono uguali)
                     composable("archivio") {
                         ArchiveScreen(
                             onBack = { navController.popBackStack() },
@@ -129,11 +105,9 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
-
                     composable("prodotti") {
                         ProductManagerScreen(productViewModel, onBack = { navController.popBackStack() })
                     }
-
                     composable("compila_header") {
                         MenuHeaderScreen(
                             onConfirm = { d, s, n ->
@@ -143,7 +117,6 @@ class MainActivity : ComponentActivity() {
                             onBack = { navController.popBackStack() }
                         )
                     }
-
                     composable(
                         route = "builder/{data}/{servizio}/{nome}",
                         arguments = listOf(
@@ -166,28 +139,47 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun signInToSharePoint() {
+    fun signInToSharePoint(productViewModel: ProductViewModel) {
         val app = mSingleAccountApp
         if (app == null) {
             Toast.makeText(this, "Attendi: inizializzazione in corso...", Toast.LENGTH_SHORT).show()
             return
         }
 
-        // Scope semplificati per SharePoint/OneDrive
         val scopes = arrayOf("Files.ReadWrite.All")
-
         app.signIn(this, "", scopes, object : AuthenticationCallback {
             override fun onSuccess(authenticationResult: IAuthenticationResult) {
                 val accessToken = authenticationResult.accessToken
 
-                // Inizializzazione client Graph
                 graphClient = GraphServiceClient.builder()
                     .authenticationProvider { CompletableFuture.completedFuture(accessToken) }
                     .buildClient()
 
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "Login SharePoint Riuscito!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "Login riuscito! Carico dati...", Toast.LENGTH_SHORT).show()
                 }
+
+                // ✅ Download automatico del JSON da OneDrive dopo il login
+                Thread {
+                    try {
+                        val service = SharePointService(graphClient!!)
+                        val jsonContent = service.downloadJsonFromOneDrive("backup_ciliegio.json")
+                        if (jsonContent != null) {
+                            productViewModel.importaDatiDaJson(jsonContent)
+                            runOnUiThread {
+                                Toast.makeText(this@MainActivity, "✅ Dati caricati da OneDrive!", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            runOnUiThread {
+                                Toast.makeText(this@MainActivity, "Nessun backup trovato su OneDrive", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            Toast.makeText(this@MainActivity, "Errore caricamento: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
             }
 
             override fun onError(exception: MsalException) {

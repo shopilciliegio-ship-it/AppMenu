@@ -4,13 +4,12 @@ import com.microsoft.graph.requests.GraphServiceClient
 
 class SharePointService(private val mClient: GraphServiceClient<okhttp3.Request>) {
 
-    private val siteDomain = "ilciliegio.sharepoint.com"
     private val folderPath = "OneDriveAndroid"
 
-    fun uploadJsonToSharePoint(jsonString: String, fileName: String) {
+    // UPLOAD JSON SU ONEDRIVE
+    fun uploadJsonToOneDrive(jsonString: String, fileName: String) {
         val bytes = jsonString.toByteArray(Charsets.UTF_8)
-
-        mClient.sites(siteDomain)
+        mClient.me()
             .drive()
             .root()
             .itemWithPath("$folderPath/$fileName")
@@ -19,13 +18,30 @@ class SharePointService(private val mClient: GraphServiceClient<okhttp3.Request>
             .put(bytes)
     }
 
-    fun uploadImageToSharePoint(imageBytes: ByteArray, fileName: String) {
-        mClient.sites(siteDomain)
+    // UPLOAD IMMAGINE SU ONEDRIVE
+    fun uploadImageToOneDrive(imageBytes: ByteArray, fileName: String) {
+        mClient.me()
             .drive()
             .root()
             .itemWithPath("$folderPath/$fileName")
             .content()
             .buildRequest()
             .put(imageBytes)
+    }
+
+    // DOWNLOAD JSON DA ONEDRIVE
+    fun downloadJsonFromOneDrive(fileName: String): String? {
+        return try {
+            val stream = mClient.me()
+                .drive()
+                .root()
+                .itemWithPath("$folderPath/$fileName")
+                .content()
+                .buildRequest()
+                .get()
+            stream?.bufferedReader()?.use { it.readText() }
+        } catch (e: Exception) {
+            null
+        }
     }
 }
