@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -30,6 +31,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,7 +42,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import androidx.compose.foundation.text.BasicTextField
 
 @Composable
 fun MenuBuilderScreen(
@@ -58,27 +59,26 @@ fun MenuBuilderScreen(
     var tabIndice by remember { mutableIntStateOf(0) }
     val catCorrente = categorie[tabIndice]
 
-    // --- STATI PER PREVIEW ---
     var showPreview by remember { mutableStateOf(false) }
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isGeneratingPreview by remember { mutableStateOf(false) }
 
-    // Stati per dialoghi
     var mostraDialogoAggiunta by remember { mutableStateOf(false) }
     var sottoCategoriaTarget by remember { mutableStateOf("Base") }
     var nuovoIngredienteNome by remember { mutableStateOf("") }
     var piattoDaModificare by remember { mutableStateOf<Pair<String, PiattoMenu>?>(null) }
     var nuovoNomeTesto by remember { mutableStateOf("") }
 
+    // ✅ NUOVO: stato per dialog prezzo
+    var mostraDialogoPrezzo by remember { mutableStateOf(false) }
+    var prezzoLocale by remember { mutableStateOf(builderViewModel.prezzoPersona.value) }
+
     val tuttiIProdotti by productViewModel.allProducts.collectAsState(initial = emptyList())
     val baseList = tuttiIProdotti.filter { it.categoria == catCorrente && it.sottocategoria == "Base" }
     val extraList = tuttiIProdotti.filter { it.categoria == catCorrente && it.sottocategoria == "Extra" }
-    var prezzoLocale by remember { mutableStateOf(builderViewModel.prezzoPersona.value) }
 
-    // Funzione interna per gestire il salvataggio automatico
     fun eseguiSalvataggioCloud() {
         scope.launch {
-            // 1. Calcolo del nome base (Prefisso-Giorno-Servizio-Data)
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ITALIAN)
             val dateObj = sdf.parse(data) ?: java.util.Date()
             val giornoSett = java.text.SimpleDateFormat("EEEE", java.util.Locale.ITALIAN).format(dateObj).lowercase()
@@ -92,40 +92,21 @@ fun MenuBuilderScreen(
                 "domenica" -> if (servizio.lowercase().contains("pranzo")) "14" else "15"
                 else -> "00"
             }
-
             val nomeExtraSuf = if (nomeMenu.isEmpty() || nomeMenu.equals("Standard", ignoreCase = true)) "" else "-$nomeMenu"
-
-            // --- GESTIONE LINGUA NEL NOME ---
             val suffixLingua = if (builderViewModel.linguaCorrente.value == "EN") "-EN" else ""
             val nomeFileBase = "$prefisso-$giornoSett-$servizio-$data$nomeExtraSuf$suffixLingua"
 
-            // 2. Preparazione dati (Entrambi sempre presenti nel JSON)
             val piattiAttuali = builderViewModel.menuFinale.mapValues { entry -> entry.value.map { it.nomeVisualizzato } }
-
-            // Se stiamo modificando un EN, i piattiAttuali sono già in inglese.
-            // Per il JSON unico però ci servono entrambi.
-            // (Nota: se hai caricato un EN, i piattiIT nel JSON saranno sovrascritti con quelli EN
-            // a meno di non avere una logica di traduzione inversa, ma seguiamo la tua richiesta)
-
-            // Il menù viene sempre compilato in IT. La traduzione avviene solo al salvataggio:
             val piattiIT = builderViewModel.menuFinale.mapValues { it.value.map { p -> p.nomeVisualizzato } }
             val piattiEN = MenuGenerator.translateMenuWithRules(piattiIT, productViewModel.dao)
-            // Poi salva entrambi nel JSON
 
-            // 3. Generazione JPG (nella lingua corretta)
             val bitmapDaSalvare = MenuGenerator.generateMenuJpg(
-                context,
-                piattiAttuali, // Usa i piatti che vedi a schermo
-                "$servizio $data",
-                builderViewModel.prezzoPersona.value,
-                false
+                context, piattiAttuali, "$servizio $data", builderViewModel.prezzoPersona.value, false
             )
             val streamJpg = ByteArrayOutputStream()
             bitmapDaSalvare.compress(Bitmap.CompressFormat.JPEG, 95, streamJpg)
-
             val jpgSalvato = CloudStorageHelper.writeFileToCloud(context, "$nomeFileBase.jpg", "image/jpeg", streamJpg.toByteArray())
 
-            // 4. Generazione JSON (Usiamo lo stesso nome base del JPG)
             val rootJson = JSONObject().apply {
                 put("date", data)
                 put("service", servizio)
@@ -134,7 +115,6 @@ fun MenuBuilderScreen(
                 put("menu_it", JSONObject().apply { piattiIT.forEach { (cat, lista) -> put(cat, JSONArray().apply { lista.forEach { put(it) } }) } })
                 put("menu_en", JSONObject().apply { piattiEN.forEach { (cat, lista) -> put(cat, JSONArray().apply { lista.forEach { put(it) } }) } })
             }
-
             val jsonSalvato = CloudStorageHelper.writeFileToCloud(context, "$nomeFileBase.json", "application/json", rootJson.toString(2).toByteArray())
 
             if (jpgSalvato && jsonSalvato) {
@@ -143,9 +123,48 @@ fun MenuBuilderScreen(
         }
     }
 
+    // ✅ DIALOG PREZZO
+    if (mostraDialogoPrezzo) {
+        AlertDialog(
+            onDismissRequest = { mostraDialogoPrezzo = false },
+            containerColor = Color(0xFF1A1A1A),
+            title = {
+                Text("Inserisci Prezzo", color = OroCiliegio, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                OutlinedTextField(
+                    value = prezzoLocale,
+                    onValueChange = { newValue ->
+                        prezzoLocale = newValue
+                        builderViewModel.prezzoPersona.value = newValue
+                    },
+                    label = { Text("Prezzo €", color = OroCiliegio) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = OroCiliegio,
+                        unfocusedBorderColor = Color.Gray
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { mostraDialogoPrezzo = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio)
+                ) {
+                    Text("OK", color = Color.Black)
+                }
+            }
+        )
+    }
+
     // --- UI PRINCIPALE ---
     Box(modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+
             // Header
             Column(modifier = Modifier.fillMaxWidth().background(Color.DarkGray).padding(8.dp)) {
                 Text("$servizio - $data", color = OroCiliegio, fontSize = 12.sp)
@@ -167,7 +186,14 @@ fun MenuBuilderScreen(
                         selected = selezionata,
                         onClick = { tabIndice = index },
                         modifier = Modifier.height(45.dp).background(if (selezionata) OroCiliegio else Color.Transparent),
-                        text = { Text(text = title, color = if (selezionata) Color.Black else Color.White, fontWeight = if (selezionata) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp) }
+                        text = {
+                            Text(
+                                text = title,
+                                color = if (selezionata) Color.Black else Color.White,
+                                fontWeight = if (selezionata) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 13.sp
+                            )
+                        }
                     )
                 }
             }
@@ -175,17 +201,29 @@ fun MenuBuilderScreen(
             // Selezione Ingredienti
             Row(modifier = Modifier.weight(0.8f).padding(8.dp)) {
                 Column(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("BASE", color = OroCiliegio, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        IconButton(onClick = { sottoCategoriaTarget = "Base"; mostraDialogoAggiunta = true }) { Icon(Icons.Default.Add, null, tint = OroCiliegio, modifier = Modifier.size(20.dp)) }
+                        IconButton(onClick = { sottoCategoriaTarget = "Base"; mostraDialogoAggiunta = true }) {
+                            Icon(Icons.Default.Add, null, tint = OroCiliegio, modifier = Modifier.size(20.dp))
+                        }
                     }
                     LazyColumn { items(baseList) { prod -> IngredientRow(prod.nome, builderViewModel.selectedBase) } }
                 }
                 Spacer(modifier = Modifier.width(4.dp))
                 Column(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text("EXTRA", color = OroCiliegio, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        IconButton(onClick = { sottoCategoriaTarget = "Extra"; mostraDialogoAggiunta = true }) { Icon(Icons.Default.Add, null, tint = OroCiliegio, modifier = Modifier.size(20.dp)) }
+                        IconButton(onClick = { sottoCategoriaTarget = "Extra"; mostraDialogoAggiunta = true }) {
+                            Icon(Icons.Default.Add, null, tint = OroCiliegio, modifier = Modifier.size(20.dp))
+                        }
                     }
                     LazyColumn { items(extraList) { prod -> IngredientRow(prod.nome, builderViewModel.selectedExtra) } }
                 }
@@ -193,31 +231,21 @@ fun MenuBuilderScreen(
 
             // Footer
             Column(modifier = Modifier.fillMaxWidth().background(Color.DarkGray).padding(horizontal = 12.dp, vertical = 8.dp)) {
-                // Riga Prezzo e Aggiungi
+
+                // ✅ Riga Prezzo - ora cliccabile che apre il dialog
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    Text("Prezzo €", color = OroCiliegio, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    BasicTextField(
-                        value = prezzoLocale,
-                        onValueChange = {
-                            prezzoLocale = it
-                            builderViewModel.prezzoPersona.value = it  // aggiorna anche il ViewModel
-                        },
-                        singleLine = true,
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            fontSize = 14.sp,
-                            color = Color.Black
-                        ),
-                        modifier = Modifier
-                            .width(70.dp)
-                            .height(48.dp)
-                            .background(Color.White)
-                            .padding(horizontal = 8.dp, vertical = 14.dp)
+                    // ✅ Scritta cliccabile che mostra il prezzo inserito
+                    Text(
+                        text = if (prezzoLocale.isEmpty()) "Prezzo € (tocca per inserire)" else "Prezzo € $prezzoLocale",
+                        color = OroCiliegio,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { mostraDialogoPrezzo = true }
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.weight(1f))
                     Button(
                         onClick = { builderViewModel.generaPiatto(catCorrente) },
-                        modifier = Modifier.weight(1f).height(40.dp),
+                        modifier = Modifier.height(40.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF008000)),
                         shape = RoundedCornerShape(4.dp)
                     ) { Text("AGGIUNGI ${catCorrente.uppercase()}", fontSize = 12.sp) }
@@ -235,23 +263,39 @@ fun MenuBuilderScreen(
                     categorie.forEach { cat ->
                         val piatti = builderViewModel.menuFinale[cat]
                         if (!piatti.isNullOrEmpty()) {
-                            item(span = { GridItemSpan(2) }) { Text(cat.uppercase(), color = OroCiliegio, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            item(span = { GridItemSpan(2) }) {
+                                Text(cat.uppercase(), color = OroCiliegio, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
                             items(piatti) { piatto ->
                                 Surface(
                                     color = Color(0xFF2C2C2C),
                                     shape = RoundedCornerShape(4.dp),
-                                    modifier = Modifier.clickable { piattoDaModificare = cat to piatto; nuovoNomeTesto = piatto.nomeVisualizzato }
-                                ) { Text(piatto.nomeVisualizzato, color = Color.White, fontSize = 11.sp, modifier = Modifier.padding(6.dp), maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    modifier = Modifier.clickable {
+                                        piattoDaModificare = cat to piatto
+                                        nuovoNomeTesto = piatto.nomeVisualizzato
+                                    }
+                                ) {
+                                    Text(
+                                        piatto.nomeVisualizzato,
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(6.dp),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
                             }
                         }
                     }
                 }
 
-                // --- BOTTONI FINALI (3 BOTTONI) ---
-                Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Bottoni finali
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = {
-                            // ✅ Salva JSON ingredienti su OneDrive prima di uscire
                             if (sharePointService != null) {
                                 scope.launch(Dispatchers.IO) {
                                     try {
@@ -272,17 +316,19 @@ fun MenuBuilderScreen(
                         Text("ESCI", fontSize = 11.sp)
                     }
 
-                    // BOTTONE PREVIEW CON CARICAMENTO E THREAD SEPARATO
                     Button(
                         enabled = !isGeneratingPreview,
                         onClick = {
                             isGeneratingPreview = true
                             scope.launch(Dispatchers.Default) {
                                 try {
-                                    val piattiIT = builderViewModel.menuFinale.mapValues { entry -> entry.value.map { it.nomeVisualizzato } }
-                                    // Passiamo TRUE per avere lo sfondo bianco e caricamento leggero
-                                    val bitmap = MenuGenerator.generateMenuJpg(context, piattiIT, "$servizio $data", builderViewModel.prezzoPersona.value, true)
-
+                                    val piattiIT = builderViewModel.menuFinale.mapValues { entry ->
+                                        entry.value.map { it.nomeVisualizzato }
+                                    }
+                                    val bitmap = MenuGenerator.generateMenuJpg(
+                                        context, piattiIT, "$servizio $data",
+                                        builderViewModel.prezzoPersona.value, true
+                                    )
                                     withContext(Dispatchers.Main) {
                                         previewBitmap = bitmap
                                         showPreview = true
@@ -317,7 +363,7 @@ fun MenuBuilderScreen(
             }
         }
 
-        // --- OVERLAY PREVIEW ZOOMABILE ---
+        // Overlay Preview
         if (showPreview && previewBitmap != null) {
             Box(
                 modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.95f)).zIndex(10f)
@@ -328,7 +374,6 @@ fun MenuBuilderScreen(
                     scale *= zoomChange
                     offset += offsetChange
                 }
-
                 androidx.compose.foundation.Image(
                     bitmap = previewBitmap!!.asImageBitmap(),
                     contentDescription = null,
@@ -342,19 +387,19 @@ fun MenuBuilderScreen(
                         )
                         .transformable(state = transformState)
                 )
-
-                // Bottone Chiudi con Pulizia Memoria
                 IconButton(
                     onClick = {
                         showPreview = false
-                        previewBitmap?.recycle() // Libera la RAM della bitmap
+                        previewBitmap?.recycle()
                         previewBitmap = null
                     },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.White.copy(alpha = 0.3f), CircleShape)
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                        .background(Color.White.copy(alpha = 0.3f), CircleShape)
                 ) {
                     Icon(Icons.Default.Close, contentDescription = "Chiudi", tint = Color.White)
                 }
-
                 Text(
                     "Pizzica per zoomare • Trascina per spostare",
                     color = Color.White.copy(alpha = 0.7f),
@@ -365,18 +410,12 @@ fun MenuBuilderScreen(
         }
     }
 
-    // --- DIALOGS (Invariati) ---
+    // Dialog Aggiungi Ingrediente
     if (mostraDialogoAggiunta) {
         AlertDialog(
             onDismissRequest = { mostraDialogoAggiunta = false },
             containerColor = Color(0xFF1A1A1A),
-            title = {
-                Text(
-                    "Aggiungi a $catCorrente",
-                    color = OroCiliegio,
-                    fontWeight = FontWeight.Bold
-                )
-            },
+            title = { Text("Aggiungi a $catCorrente", color = OroCiliegio, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = nuovoIngredienteNome,
@@ -394,19 +433,12 @@ fun MenuBuilderScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        productViewModel.aggiungiIngredienteVeloce(
-                            nuovoIngredienteNome,
-                            catCorrente,
-                            sottoCategoriaTarget,
-                            context
-                        )
+                        productViewModel.aggiungiIngredienteVeloce(nuovoIngredienteNome, catCorrente, sottoCategoriaTarget, context)
                         nuovoIngredienteNome = ""
                         mostraDialogoAggiunta = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio)
-                ) {
-                    Text("Aggiungi", color = Color.Black)
-                }
+                ) { Text("Aggiungi", color = Color.Black) }
             },
             dismissButton = {
                 TextButton(onClick = { mostraDialogoAggiunta = false }) {
@@ -416,24 +448,15 @@ fun MenuBuilderScreen(
         )
     }
 
+    // Dialog Modifica/Elimina Piatto
     if (piattoDaModificare != null) {
         AlertDialog(
             onDismissRequest = { piattoDaModificare = null },
             containerColor = Color(0xFF1A1A1A),
-            title = {
-                Text(
-                    "Modifica/Elimina Piatto",
-                    color = OroCiliegio,
-                    fontWeight = FontWeight.Bold
-                )
-            },
+            title = { Text("Modifica/Elimina Piatto", color = OroCiliegio, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text(
-                        "Piatto: ${piattoDaModificare!!.second.nomeVisualizzato}",
-                        color = Color.White,
-                        fontSize = 13.sp
-                    )
+                    Text("Piatto: ${piattoDaModificare!!.second.nomeVisualizzato}", color = Color.White, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = nuovoNomeTesto,
@@ -465,28 +488,19 @@ fun MenuBuilderScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio),
                     enabled = nuovoNomeTesto.isNotEmpty()
-                ) {
-                    Text("Salva", color = Color.Black)
-                }
+                ) { Text("Salva", color = Color.Black) }
             },
             dismissButton = {
                 Row {
                     Button(
                         onClick = {
-                            builderViewModel.rimuoviPiatto(
-                                piattoDaModificare!!.first,
-                                piattoDaModificare!!.second
-                            )
+                            builderViewModel.rimuoviPiatto(piattoDaModificare!!.first, piattoDaModificare!!.second)
                             piattoDaModificare = null
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                    ) {
-                        Text("Elimina", color = Color.White)
-                    }
+                    ) { Text("Elimina", color = Color.White) }
                     Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedButton(
-                        onClick = { piattoDaModificare = null }
-                    ) {
+                    OutlinedButton(onClick = { piattoDaModificare = null }) {
                         Text("Annulla", color = Color.Gray)
                     }
                 }
