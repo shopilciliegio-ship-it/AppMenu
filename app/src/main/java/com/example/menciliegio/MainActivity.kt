@@ -7,13 +7,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.ViewModel                          // ← QUESTO MANCAVA
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -23,6 +23,7 @@ import androidx.navigation.navArgument
 import com.microsoft.graph.requests.GraphServiceClient
 import com.microsoft.identity.client.*
 import com.microsoft.identity.client.exception.MsalException
+import com.microsoft.identity.client.exception.MsalUiRequiredException
 import org.json.JSONObject
 import java.util.concurrent.CompletableFuture
 
@@ -30,6 +31,9 @@ class MainActivity : ComponentActivity() {
 
     private var mSingleAccountApp: ISingleAccountPublicClientApplication? = null
     private var graphClient: GraphServiceClient<okhttp3.Request>? = null
+
+    // ✅ Stato login condiviso tra MSAL e UI
+    private var onLoginSuccess: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +64,9 @@ class MainActivity : ComponentActivity() {
                 override fun onCreated(application: ISingleAccountPublicClientApplication) {
                     mSingleAccountApp = application
                     Log.d("MSAL", "App Microsoft inizializzata correttamente!")
+
+                    // ✅ Tenta subito il silent login all'avvio
+                    tentaSilentLogin(productViewModel)
                 }
 
                 override fun onError(exception: MsalException) {
@@ -71,6 +78,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             val navController = rememberNavController()
 
+            // ✅ Stato reattivo per mostrare/nascondere il bottone login
+            var loginEffettuato by remember { mutableStateOf(false) }
+
+            // ✅ Collega il callback UI al silent login
+            onLoginSuccess = { loginEffettuato = true }
+
             Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
@@ -79,16 +92,34 @@ class MainActivity : ComponentActivity() {
                                 onNavigate = { navController.navigate(it) },
                                 productViewModel = productViewModel
                             )
-                            // ✅ Login SharePoint spostato in BottomCenter
-                            Button(
-                                onClick = { signInToSharePoint(productViewModel) },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 16.dp)
-                                    .fillMaxWidth(0.8f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
-                            ) {
-                                Text("Login SharePoint", fontSize = 14.sp)
+
+                            // ✅ Mostra bottone Login solo se NON ancora loggato
+                            if (!loginEffettuato) {
+                                Button(
+                                    onClick = {
+                                        signInToSharePoint(
+                                            productViewModel = productViewModel,
+                                            onSuccess = { loginEffettuato = true }
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 16.dp)
+                                        .fillMaxWidth(0.8f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                                ) {
+                                    Text("Login SharePoint", fontSize = 14.sp)
+                                }
+                            } else {
+                                // ✅ Dopo il login mostra indicatore connessione
+                                Text(
+                                    text = "☁️ OneDrive connesso",
+                                    color = Color.Green,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 16.dp)
+                                )
                             }
                         }
                     }
@@ -106,7 +137,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     composable("prodotti") {
-                        ProductManagerScreen(productViewModel, onBack = { navController.popBackStack() })
+                        ProductManagerScreen(
+                            viewModel = productViewModel,
+                            sharePointService = graphClient?.let { SharePointService(it) },
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                     composable("compila_header") {
                         MenuHeaderScreen(
@@ -139,7 +174,65 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun signInToSharePoint(productViewModel: ProductViewModel) {
+    // ✅ SILENT LOGIN: Tenta login automatico all'avvio senza UI
+    private fun tentaSilentLogin(productViewModel: ProductViewModel) {
+        val app = mSingleAccountApp ?: return
+
+        Thread {
+            try {
+                // Controlla se esiste un account salvato
+                val account = app.currentAccount?.currentAccount
+                if (account == null) {
+                    Log.d("MSAL", "Nessun account salvato → login manuale richiesto")
+                    return@Thread
+                }
+
+                Log.d("MSAL", "Account trovato: ${account.username}, tento silent login...")
+
+                // Acquisisce token in silenzio (senza UI)
+                val scopes = arrayOf("Files.ReadWrite.All")
+                val result = app.acquireTokenSilent(scopes, account.authority)
+                val accessToken = result.accessToken
+
+                // Crea il graphClient con il token ottenuto
+                graphClient = GraphServiceClient.builder()
+                    .authenticationProvider { CompletableFuture.completedFuture(accessToken) }
+                    .buildClient()
+
+                Log.d("MSAL", "Silent login riuscito!")
+
+                // ✅ Notifica la UI che il login è avvenuto
+                runOnUiThread {
+                    onLoginSuccess?.invoke()
+                    Toast.makeText(this, "☁️ Connesso a OneDrive!", Toast.LENGTH_SHORT).show()
+                }
+
+                // ✅ Scarica automaticamente il JSON da OneDrive
+                val service = SharePointService(graphClient!!)
+                val jsonContent = service.downloadJsonFromOneDrive("backup_ciliegio.json")
+                if (jsonContent != null) {
+                    productViewModel.importaDatiDaJson(jsonContent)
+                    runOnUiThread {
+                        Toast.makeText(this, "✅ Dati aggiornati da OneDrive!", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    Log.d("MSAL", "Nessun backup trovato su OneDrive")
+                }
+
+            } catch (e: MsalUiRequiredException) {
+                // Token scaduto o non presente → serve login manuale, nessun errore
+                Log.d("MSAL", "Token scaduto → login manuale richiesto")
+            } catch (e: Exception) {
+                Log.e("MSAL", "Errore silent login: ${e.message}")
+            }
+        }.start()
+    }
+
+    // Login manuale (quando l'utente preme il bottone)
+    fun signInToSharePoint(
+        productViewModel: ProductViewModel,
+        onSuccess: (() -> Unit)? = null
+    ) {
         val app = mSingleAccountApp
         if (app == null) {
             Toast.makeText(this, "Attendi: inizializzazione in corso...", Toast.LENGTH_SHORT).show()
@@ -157,9 +250,10 @@ class MainActivity : ComponentActivity() {
 
                 runOnUiThread {
                     Toast.makeText(this@MainActivity, "Login riuscito! Carico dati...", Toast.LENGTH_SHORT).show()
+                    onSuccess?.invoke()
                 }
 
-                // ✅ Download automatico del JSON da OneDrive dopo il login
+                // Download automatico del JSON da OneDrive dopo il login manuale
                 Thread {
                     try {
                         val service = SharePointService(graphClient!!)

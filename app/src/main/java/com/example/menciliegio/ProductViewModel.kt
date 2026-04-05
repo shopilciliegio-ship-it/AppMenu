@@ -20,15 +20,7 @@ class ProductViewModel(val dao: MenuDao) : ViewModel() {
 
     // --- FUNZIONE DI SINCRONIZZAZIONE ---
     fun syncDatabaseToCloud(context: Context) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val jsonString = esportaDatiInJson()
-            CloudStorageHelper.writeFileToCloud(
-                context,
-                "database_prodotti_master.json",
-                "application/json",
-                jsonString.toByteArray()
-            )
-        }
+        // Sincronizzazione ora gestita tramite SharePointService al login
     }
 
     // 1. Questa serve per la schermata "Gestione Prodotti"
