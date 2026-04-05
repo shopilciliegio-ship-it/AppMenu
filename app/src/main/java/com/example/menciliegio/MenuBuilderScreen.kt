@@ -201,9 +201,15 @@ fun MenuBuilderScreen(
                         value = builderViewModel.prezzoPersona.value,
                         onValueChange = { builderViewModel.prezzoPersona.value = it },
                         modifier = Modifier.width(70.dp).height(48.dp),
-                        textStyle = TextStyle(fontSize = 14.sp),
+                        textStyle = TextStyle(fontSize = 14.sp, color = Color.Black),
                         singleLine = true,
-                        colors = TextFieldDefaults.colors(focusedContainerColor = Color.White, unfocusedContainerColor = Color.LightGray)
+                        colors = TextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.LightGray,
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            cursorColor = Color.Black
+                        )
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
