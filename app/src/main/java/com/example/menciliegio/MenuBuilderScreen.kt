@@ -29,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,7 +40,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
-import com.example.menciliegio.PiattoMenu
+import androidx.compose.foundation.text.BasicTextField
 
 @Composable
 fun MenuBuilderScreen(
@@ -74,6 +73,7 @@ fun MenuBuilderScreen(
     val tuttiIProdotti by productViewModel.allProducts.collectAsState(initial = emptyList())
     val baseList = tuttiIProdotti.filter { it.categoria == catCorrente && it.sottocategoria == "Base" }
     val extraList = tuttiIProdotti.filter { it.categoria == catCorrente && it.sottocategoria == "Extra" }
+    var prezzoLocale by remember { mutableStateOf(builderViewModel.prezzoPersona.value) }
 
     // Funzione interna per gestire il salvataggio automatico
     fun eseguiSalvataggioCloud() {
@@ -197,19 +197,22 @@ fun MenuBuilderScreen(
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Prezzo €", color = OroCiliegio, fontSize = 14.sp)
                     Spacer(modifier = Modifier.width(8.dp))
-                    TextField(
-                        value = builderViewModel.prezzoPersona.value,
-                        onValueChange = { builderViewModel.prezzoPersona.value = it },
-                        modifier = Modifier.width(70.dp).height(48.dp),
-                        textStyle = TextStyle(fontSize = 14.sp, color = Color.Black),
+                    BasicTextField(
+                        value = prezzoLocale,
+                        onValueChange = {
+                            prezzoLocale = it
+                            builderViewModel.prezzoPersona.value = it  // aggiorna anche il ViewModel
+                        },
                         singleLine = true,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.LightGray,
-                            focusedTextColor = Color.Black,
-                            unfocusedTextColor = Color.Black,
-                            cursorColor = Color.Black
-                        )
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = 14.sp,
+                            color = Color.Black
+                        ),
+                        modifier = Modifier
+                            .width(70.dp)
+                            .height(48.dp)
+                            .background(Color.White)
+                            .padding(horizontal = 8.dp, vertical = 14.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
