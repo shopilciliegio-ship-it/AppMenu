@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ProductManagerScreen(
     viewModel: ProductViewModel,
-    sharePointService: SharePointService?,   // ← AGGIUNTO (nullable: se non loggato)
+    sharePointService: SharePointService?,
     onBack: () -> Unit
 ) {
     val prodotti by viewModel.allProducts.collectAsState(initial = emptyList())
@@ -33,6 +33,92 @@ fun ProductManagerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var uploadStatus by remember { mutableStateOf("") }
+
+    // ✅ Stato per il popup modifica/elimina
+    var prodottoSelezionato by remember { mutableStateOf<Prodotto?>(null) }
+    var nuovoNome by remember { mutableStateOf("") }
+
+    // ✅ Popup modifica/elimina ingrediente
+    if (prodottoSelezionato != null) {
+        AlertDialog(
+            onDismissRequest = {
+                prodottoSelezionato = null
+                nuovoNome = ""
+            },
+            containerColor = Color(0xFF1A1A1A),
+            title = {
+                Text(
+                    "Ingrediente: ${prodottoSelezionato!!.nome}",
+                    color = OroCiliegio,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        "Vuoi rinominare o eliminare questo ingrediente?",
+                        color = Color.White,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = nuovoNome,
+                        onValueChange = { nuovoNome = it },
+                        label = { Text("Nuovo nome", color = OroCiliegio) },
+                        placeholder = { Text(prodottoSelezionato!!.nome, color = Color.Gray) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = OroCiliegio,
+                            unfocusedBorderColor = Color.Gray
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                // ✅ Bottone RINOMINA
+                Button(
+                    onClick = {
+                        if (nuovoNome.isNotEmpty()) {
+                            viewModel.rinominaProdotto(prodottoSelezionato!!, nuovoNome, context)
+                        }
+                        prodottoSelezionato = null
+                        nuovoNome = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio),
+                    enabled = nuovoNome.isNotEmpty()
+                ) {
+                    Text("Rinomina", color = Color.Black)
+                }
+            },
+            dismissButton = {
+                Row {
+                    // ✅ Bottone ELIMINA
+                    Button(
+                        onClick = {
+                            viewModel.eliminaProdotto(prodottoSelezionato!!, context)
+                            prodottoSelezionato = null
+                            nuovoNome = ""
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) {
+                        Text("Elimina", color = Color.White)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // ✅ Bottone ANNULLA
+                    OutlinedButton(
+                        onClick = {
+                            prodottoSelezionato = null
+                            nuovoNome = ""
+                        }
+                    ) {
+                        Text("Annulla", color = Color.Gray)
+                    }
+                }
+            }
+        )
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.Black).padding(16.dp)) {
         Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) {
@@ -95,30 +181,36 @@ fun ProductManagerScreen(
         Row(modifier = Modifier.weight(1f).padding(vertical = 8.dp)) {
             Box(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
                 IngredientList(
-                    "BASE",
-                    prodotti.filter { it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Base" },
-                    viewModel,
-                    context
+                    title = "BASE",
+                    list = prodotti.filter {
+                        it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Base"
+                    },
+                    onItemClick = { prodotto ->
+                        prodottoSelezionato = prodotto
+                        nuovoNome = ""
+                    }
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Box(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
                 IngredientList(
-                    "EXTRA",
-                    prodotti.filter { it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Extra" },
-                    viewModel,
-                    context
+                    title = "EXTRA",
+                    list = prodotti.filter {
+                        it.categoria == categorie[tabSelezionata] && it.sottocategoria == "Extra"
+                    },
+                    onItemClick = { prodotto ->
+                        prodottoSelezionato = prodotto
+                        nuovoNome = ""
+                    }
                 )
             }
         }
 
-        // Messaggio di stato upload
         if (uploadStatus.isNotEmpty()) {
             Text(uploadStatus, color = Color.Green, fontSize = 12.sp)
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        // ✅ Solo il bottone SALVA SU ONEDRIVE (rimosso IMPORTA JSON)
         Button(
             onClick = {
                 if (sharePointService == null) {
@@ -147,8 +239,13 @@ fun ProductManagerScreen(
     }
 }
 
+// ✅ IngredientList aggiornata: ora passa il prodotto intero al click
 @Composable
-fun IngredientList(title: String, list: List<Prodotto>, viewModel: ProductViewModel, context: Context) {
+fun IngredientList(
+    title: String,
+    list: List<Prodotto>,
+    onItemClick: (Prodotto) -> Unit
+) {
     Column {
         Text(
             text = title,
@@ -165,7 +262,7 @@ fun IngredientList(title: String, list: List<Prodotto>, viewModel: ProductViewMo
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(8.dp)
-                        .clickable { viewModel.eliminaProdotto(prodotto, context) }
+                        .clickable { onItemClick(prodotto) }
                 )
             }
         }
