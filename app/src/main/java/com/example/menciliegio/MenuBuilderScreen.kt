@@ -360,25 +360,49 @@ fun MenuBuilderScreen(
     if (mostraDialogoAggiunta) {
         AlertDialog(
             onDismissRequest = { mostraDialogoAggiunta = false },
-            title = { Text("Aggiungi a $catCorrente") },
+            containerColor = Color(0xFF1A1A1A),
+            title = {
+                Text(
+                    "Aggiungi a $catCorrente",
+                    color = OroCiliegio,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 OutlinedTextField(
                     value = nuovoIngredienteNome,
                     onValueChange = { nuovoIngredienteNome = it },
-                    label = { Text("Nome") }
+                    label = { Text("Nome", color = OroCiliegio) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = OroCiliegio,
+                        unfocusedBorderColor = Color.Gray
+                    ),
+                    modifier = Modifier.fillMaxWidth()
                 )
             },
             confirmButton = {
-                Button(onClick = {
-                    productViewModel.aggiungiIngredienteVeloce(
-                        nuovoIngredienteNome, catCorrente, sottoCategoriaTarget, context
-                    )
-                    nuovoIngredienteNome = ""
-                    mostraDialogoAggiunta = false
-                }) { Text("Aggiungi") }
+                Button(
+                    onClick = {
+                        productViewModel.aggiungiIngredienteVeloce(
+                            nuovoIngredienteNome,
+                            catCorrente,
+                            sottoCategoriaTarget,
+                            context
+                        )
+                        nuovoIngredienteNome = ""
+                        mostraDialogoAggiunta = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio)
+                ) {
+                    Text("Aggiungi", color = Color.Black)
+                }
             },
             dismissButton = {
-                TextButton(onClick = { mostraDialogoAggiunta = false }) { Text("Annulla") }
+                TextButton(onClick = { mostraDialogoAggiunta = false }) {
+                    Text("Annulla", color = Color.Gray)
+                }
             }
         )
     }
