@@ -166,6 +166,7 @@ class MainActivity : ComponentActivity() {
                             nomeMenu = backStackEntry.arguments?.getString("nome") ?: "",
                             productViewModel = productViewModel,
                             builderViewModel = builderViewModel,
+                            sharePointService = graphClient?.let { SharePointService(it) },
                             onBack = { navController.popBackStack() }
                         )
                     }

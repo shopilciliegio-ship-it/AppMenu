@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import android.util.Log
 
 @Composable
 fun ProductManagerScreen(
@@ -121,7 +122,25 @@ fun ProductManagerScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.Black).padding(16.dp)) {
-        Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)) {
+        Button(
+            onClick = {
+                // ✅ Salva su OneDrive prima di tornare alla home
+                if (sharePointService != null) {
+                    scope.launch(Dispatchers.IO) {
+                        try {
+                            val json = viewModel.esportaDatiInJson()
+                            sharePointService.uploadJsonToOneDrive(json, "backup_ciliegio.json")
+                        } catch (e: Exception) {
+                            Log.e("OneDrive", "Errore salvataggio: ${e.message}")
+                        }
+                        launch(Dispatchers.Main) { onBack() }
+                    }
+                } else {
+                    onBack()
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Gray)
+        ) {
             Text("← HOME")
         }
         Spacer(modifier = Modifier.height(8.dp))

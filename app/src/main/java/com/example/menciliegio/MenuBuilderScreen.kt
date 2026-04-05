@@ -1,6 +1,7 @@
 package com.example.menciliegio
 
 import android.graphics.Bitmap
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -49,6 +50,7 @@ fun MenuBuilderScreen(
     nomeMenu: String,
     productViewModel: ProductViewModel,
     builderViewModel: MenuBuilderViewModel,
+    sharePointService: SharePointService?,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -238,7 +240,26 @@ fun MenuBuilderScreen(
 
                 // --- BOTTONI FINALI (3 BOTTONI) ---
                 Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onBack, colors = ButtonDefaults.buttonColors(containerColor = Color.Red), modifier = Modifier.weight(1f).height(40.dp)) {
+                    Button(
+                        onClick = {
+                            // ✅ Salva JSON ingredienti su OneDrive prima di uscire
+                            if (sharePointService != null) {
+                                scope.launch(Dispatchers.IO) {
+                                    try {
+                                        val json = productViewModel.esportaDatiInJson()
+                                        sharePointService.uploadJsonToOneDrive(json, "backup_ciliegio.json")
+                                    } catch (e: Exception) {
+                                        Log.e("OneDrive", "Errore salvataggio: ${e.message}")
+                                    }
+                                    launch(Dispatchers.Main) { onBack() }
+                                }
+                            } else {
+                                onBack()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                        modifier = Modifier.weight(1f).height(40.dp)
+                    ) {
                         Text("ESCI", fontSize = 11.sp)
                     }
 
