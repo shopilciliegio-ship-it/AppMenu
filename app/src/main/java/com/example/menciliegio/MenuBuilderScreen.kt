@@ -386,24 +386,78 @@ fun MenuBuilderScreen(
     if (piattoDaModificare != null) {
         AlertDialog(
             onDismissRequest = { piattoDaModificare = null },
-            title = { Text("Modifica/Elimina Piatto") },
-            text = { OutlinedTextField(value = nuovoNomeTesto, onValueChange = { nuovoNomeTesto = it }, label = { Text("Nome visualizzato") }) },
-            confirmButton = {
-                Button(onClick = {
-                    if (nuovoNomeTesto.isNotEmpty()) {
-                        // AGGIUNTO context E productViewModel qui sotto:
-                        builderViewModel.rinominaESalvaRegola(
-                            piattoDaModificare!!.first,
-                            piattoDaModificare!!.second,
-                            nuovoNomeTesto,
-                            context,         // <--- AGGIUNTO
-                            productViewModel // <--- AGGIUNTO
-                        )
-                    }
-                    piattoDaModificare = null
-                }) { Text("Salva") }
+            containerColor = Color(0xFF1A1A1A),
+            title = {
+                Text(
+                    "Modifica/Elimina Piatto",
+                    color = OroCiliegio,
+                    fontWeight = FontWeight.Bold
+                )
             },
-            // ... resto del dialogo ...
+            text = {
+                Column {
+                    Text(
+                        "Piatto: ${piattoDaModificare!!.second.nomeVisualizzato}",
+                        color = Color.White,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = nuovoNomeTesto,
+                        onValueChange = { nuovoNomeTesto = it },
+                        label = { Text("Nome visualizzato", color = OroCiliegio) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = OroCiliegio,
+                            unfocusedBorderColor = Color.Gray
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (nuovoNomeTesto.isNotEmpty()) {
+                            builderViewModel.rinominaESalvaRegola(
+                                piattoDaModificare!!.first,
+                                piattoDaModificare!!.second,
+                                nuovoNomeTesto,
+                                context,
+                                productViewModel
+                            )
+                        }
+                        piattoDaModificare = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio),
+                    enabled = nuovoNomeTesto.isNotEmpty()
+                ) {
+                    Text("Salva", color = Color.Black)
+                }
+            },
+            dismissButton = {
+                Row {
+                    Button(
+                        onClick = {
+                            builderViewModel.rimuoviPiatto(
+                                piattoDaModificare!!.first,
+                                piattoDaModificare!!.second
+                            )
+                            piattoDaModificare = null
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) {
+                        Text("Elimina", color = Color.White)
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = { piattoDaModificare = null }
+                    ) {
+                        Text("Annulla", color = Color.Gray)
+                    }
+                }
+            }
         )
     }
 }
