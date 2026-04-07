@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import androidx.compose.ui.platform.LocalConfiguration
 
 @Composable
 fun MenuBuilderScreen(
@@ -76,6 +77,20 @@ fun MenuBuilderScreen(
     val tuttiIProdotti by productViewModel.allProducts.collectAsState(initial = emptyList())
     val baseList = tuttiIProdotti.filter { it.categoria == catCorrente && it.sottocategoria == "Base" }
     val extraList = tuttiIProdotti.filter { it.categoria == catCorrente && it.sottocategoria == "Extra" }
+
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp
+    val screenHeight = configuration.screenHeightDp
+    val isTablet = screenWidth >= 600
+
+    val textSizeSmall = (screenWidth * 0.018f).sp
+    val textSizeMedium = (screenWidth * 0.022f).sp
+    val textSizeLarge = (screenWidth * 0.026f).sp
+    val buttonHeight = (screenHeight * 0.07f).dp
+    val headerPadding = (screenWidth * 0.012f).dp
+    val gridHeight = (screenHeight * 0.28f).dp
+    val tabHeight = (screenHeight * 0.07f).dp
+    val ingredientWeight = if (isTablet) 1.5f else 0.8f
 
     fun eseguiSalvataggioCloud() {
         scope.launch {
@@ -166,9 +181,9 @@ fun MenuBuilderScreen(
         Column(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
             // Header
-            Column(modifier = Modifier.fillMaxWidth().background(Color.DarkGray).padding(8.dp)) {
-                Text("$servizio - $data", color = OroCiliegio, fontSize = 12.sp)
-                Text(nomeMenu.uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Column(modifier = Modifier.fillMaxWidth().background(Color.DarkGray).padding(headerPadding)) {
+                Text("$servizio - $data", color = OroCiliegio, fontSize = textSizeSmall)
+                Text(nomeMenu.uppercase(), color = Color.White, fontWeight = FontWeight.Bold, fontSize = textSizeLarge)
             }
 
             // Tabs
@@ -185,21 +200,14 @@ fun MenuBuilderScreen(
                     Tab(
                         selected = selezionata,
                         onClick = { tabIndice = index },
-                        modifier = Modifier.height(45.dp).background(if (selezionata) OroCiliegio else Color.Transparent),
-                        text = {
-                            Text(
-                                text = title,
-                                color = if (selezionata) Color.Black else Color.White,
-                                fontWeight = if (selezionata) FontWeight.Bold else FontWeight.Normal,
-                                fontSize = 13.sp
-                            )
-                        }
+                        modifier = Modifier.height(tabHeight).background(if (selezionata) OroCiliegio else Color.Transparent),
+                        text = { Text(text = title, color = if (selezionata) Color.Black else Color.White, fontWeight = if (selezionata) FontWeight.Bold else FontWeight.Normal, fontSize = textSizeSmall) }
                     )
                 }
             }
 
             // Selezione Ingredienti
-            Row(modifier = Modifier.weight(0.8f).padding(8.dp)) {
+            Row(modifier = Modifier.weight(ingredientWeight).padding(headerPadding)) {
                 Column(modifier = Modifier.weight(1f).border(1.dp, Color.Gray).padding(4.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -238,7 +246,7 @@ fun MenuBuilderScreen(
                     Text(
                         text = if (prezzoLocale.isEmpty()) "Prezzo € (tocca per inserire)" else "Prezzo € $prezzoLocale",
                         color = OroCiliegio,
-                        fontSize = 14.sp,
+                        fontSize = textSizeMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable { mostraDialogoPrezzo = true }
                     )
@@ -255,8 +263,8 @@ fun MenuBuilderScreen(
 
                 // Anteprima Grid
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    modifier = Modifier.height(180.dp).fillMaxWidth(),
+                    columns = GridCells.Fixed(if (isTablet) 3 else 2),
+                    modifier = Modifier.height(gridHeight).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -311,9 +319,9 @@ fun MenuBuilderScreen(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
-                        modifier = Modifier.weight(1f).height(40.dp)
+                        modifier = Modifier.weight(1f).height(buttonHeight)
                     ) {
-                        Text("ESCI", fontSize = 11.sp)
+                        Text("ESCI", fontSize = textSizeSmall)
                     }
 
                     Button(
@@ -343,21 +351,30 @@ fun MenuBuilderScreen(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-                        modifier = Modifier.weight(1f).height(40.dp)
+                        modifier = Modifier.weight(1f).height(buttonHeight)
                     ) {
                         if (isGeneratingPreview) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(if (isTablet) 26.dp else 18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
                         } else {
-                            Text("PREVIEW", fontSize = 11.sp)
+                            Text("PREVIEW", fontSize = textSizeSmall)
                         }
                     }
 
                     Button(
                         onClick = { eseguiSalvataggioCloud() },
                         colors = ButtonDefaults.buttonColors(containerColor = OroCiliegio),
-                        modifier = Modifier.weight(1.2f).height(40.dp)
+                        modifier = Modifier.weight(1.2f).height(buttonHeight)
                     ) {
-                        Text("SALVA CLOUD", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        Text(
+                            "SALVA CLOUD",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = textSizeSmall
+                        )
                     }
                 }
             }
@@ -511,12 +528,22 @@ fun MenuBuilderScreen(
 
 @Composable
 fun IngredientRow(nome: String, selectedList: MutableList<String>) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.height(32.dp)) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.screenWidthDp >= 600
+
+    Row(verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.height(if (isTablet) 48.dp else 32.dp)) {
         Checkbox(
             checked = selectedList.contains(nome),
             onCheckedChange = { if (it) selectedList.add(nome) else selectedList.remove(nome) },
             colors = CheckboxDefaults.colors(checkedColor = OroCiliegio)
         )
-        Text(nome, color = Color.White, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            nome,
+            color = Color.White,
+            fontSize = if (isTablet) 16.sp else 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
